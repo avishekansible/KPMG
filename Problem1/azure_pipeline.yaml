@@ -1,0 +1,80 @@
+trigger:
+ - azure-pipeline
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+resources:
+  repositories:
+  - repository: Problem1
+    type: git
+    name: KPMG/Problem1
+
+stages:
+- stage: "validateTerraform"
+  displayName: "Terraform > install"
+  jobs:
+   - job: 
+     continueOnError: false
+     steps:
+     - checkout: Problem1
+       persistCredentials: true
+       path: Problem1
+       clean: true
+       fetchDepth: 1
+     - task: TerraformInstaller@0
+       displayName: Install
+       inputs:
+         terraformVersion: $(TerraformVersion)
+
+- stage: Approval
+  displayName: "Terraform < init, validate, plan, apply"
+  jobs:
+  - deployment: BuildResources
+    displayName: "Build Azure Resources in Azure Portal"
+    environment: dev01
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: Problem1
+              persistCredentials: true
+              path: Problem1
+              clean: true
+              fetchDepth: 1
+
+            - task: TerraformTaskV2@2
+              displayName: Initializing
+              inputs:
+                  provider: 'azurerm'
+                  command: 'init'
+                  workingDirectory: '$(Pipeline.WorkSpace)/Problem1
+                  backendServiceArm: $(ServicePrincipleName)
+                  backendAzureRmResourceGroupName: $(ResourceGroupName)
+                  backendAzureRmStorageAccountName: $(StorageAccountName)
+                  backendAzureRmContainerName: $(ContainerName)
+                  backendAzureRmKey: $(tfstateFileName)
+
+            - task: TerraformTaskV2@2
+              displayName: Validating
+              inputs:
+                  provider: 'azurerm'
+                  command: 'validate'
+              
+            - task: TerraformTaskV2@2
+              displayName: Applying Terraform Plan
+              inputs:
+                  provider: 'azurerm'
+                  command: 'plan'
+                  workingDirectory: '$(Pipeline.WorkSpace)/Problem1
+                  commandOptions: '-var-file=$(Pipeline.WorkSpace)/s/terraform.tfvars'
+                  environmentServiceNameAzureRM: '$(ServicePrincipleName)'
+
+            - task: TerraformTaskV2@2
+              displayName: Deploying Terraform Resources
+              inputs:
+                    provider: 'azurerm'
+                    command: 'apply'
+                    workingDirectory: '$(Pipeline.WorkSpace)/components/Problem1
+                    commandOptions: '-var-file=$(Pipeline.WorkSpace)/s/terraform.tfvars'
+                    environmentServiceNameAzureRM: $(ServicePrincipleName)
